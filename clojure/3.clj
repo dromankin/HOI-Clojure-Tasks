@@ -1,28 +1,17 @@
-(defn parallel-filter [pred coll & {:keys [chunk-size] 
-                                   :or {chunk-size 1000}}]
-  (letfn [(process-chunk [chunk]
-            (doall (filter pred chunk)))
-          
-          (split-into-chunks [s]
-            (lazy-seq
-              (when-let [s (seq s)]
-                (let [chunk (take chunk-size s)
-                      rest-coll (drop chunk-size s)]
-                  (cons chunk (split-into-chunks rest-coll))))))
-          
-          (process-parallel [chunks]
-            (lazy-seq
-              (when-let [chunks (seq chunks)]
-                (let [chunks-to-process (take 4 chunks)  
-                      futures (doall (map #(future (process-chunk %)) 
-                                         chunks-to-process))
-                      results (mapcat deref futures)]
-                  (lazy-cat results 
-                           (process-parallel (drop (count chunks-to-process) chunks)))))))]
-    
-    (if (empty? coll)
-      '()
-      (process-parallel (split-into-chunks coll)))))
+(defn parallel-filter
+  ([pred coll batch]
+   (let [n 3
+         batches (map doall (partition-all batch coll))
+         fut #(doall (filter pred %))
+         returns (map #(future (fut %)) batches)
+
+         step (fn step [[x & xs :as vs] fs]
+                (if-let [s (seq fs)]
+                  (lazy-seq
+                    (lazy-cat (deref x) (step xs (rest s))))
+                  (apply concat  (map deref vs))
+                  ))]
+     (step returns (drop n returns)))))
 
 
 (require '[clojure.test :refer [deftest is]])
@@ -30,12 +19,12 @@
 
 (deftest parallel-filter-test
   (is (= [2 4 6 8 10] 
-         (parallel-filter even? (range 1 11) :chunk-size 3)))
+         (parallel-filter even? (range 1 11) 10)))
   
-  (is (empty? (parallel-filter even? [])))
+  (is (empty? (parallel-filter even? [] 10)))
   
   (is (= [0 2 4 6 8] 
-         (take 5 (parallel-filter even? (range) :chunk-size 10))))
+         (take 5 (parallel-filter even? (range) 10))))
   
 ) 
 
@@ -53,7 +42,27 @@
     (println "\nParallel(chunk-size: 5000):")
     (time (doall (parallel-filter pred large-data :chunk-size 5000))))
     
-    (System/exit 0))
+    (System/exit 0)
+    )
 
+
+(deftest ^:performance c3-timing-demo
+  (let [xs  (range 1 5000000)
+        p   (fn [n]
+              (cond
+                (< n 2) false
+                (= n 2) true
+                (even? n) false
+                :else (let [lim (long (Math/sqrt n))]
+                        (not-any? #(zero? (mod n %))
+                                  (range 3 (inc lim) 2)))))]
+    (println "Serial (filter):")
+    (time (count (doall (filter p xs))))
+    (println "Parallel (pfilter-blocked, 4096):")
+    (time (count (doall (parallel-filter p xs 4096))))))
+
+
+(println (doall (take 10 (parallel-filter even? (range 1 60) 10))))
 (parallel-filter-test)
-(demonstrate-efficiency)
+;;(demonstrate-efficiency)
+(c3-timing-demo)

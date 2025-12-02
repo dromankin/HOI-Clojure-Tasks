@@ -88,7 +88,7 @@
   [state ware storage-atom amount]
   (let [bill (state :bill)                ;; Required wares for a cycle
         buffer (state :buffer)             ;; Current wares already collected
-        updated-buffer (update buffer ware #(+ % amount))  ;; Update buffer with the newly received items
+         
         needed-amount (- (get bill ware 0) (get buffer ware 0))
         take-amount (min needed-amount amount)
         duration (state :duration)         ;; Cycle duration
@@ -97,7 +97,7 @@
       (try
         (do
           (swap! storage-atom #(- % take-amount))
-          (let [updated-buffer (update buffer ware #(+ % take-amount))]
+          (let [updated-buffer (update buffer ware #(+ % take-amount))] ;; Update buffer with the newly received items
             ;; Check if we can start a new production cycle
             (if (every? #(>= (updated-buffer %) (bill %)) (keys bill))
               (let [reduced-buffer (reduce-kv
@@ -132,7 +132,7 @@
 (def cuckoo-clock-factory (factory 1 2000 cuckoo-clock-storage "Lumber" 5 "Gears" 10))
 (def gears-storage (storage "Gears" 20 cuckoo-clock-factory))
 (def gears-factory (factory 4 1000 gears-storage "Ore" 4))
-(def metal-storage (storage "Metal" 5 safe-factory))
+(def metal-storage (storage "Metal" 1 safe-factory))
 (def metal-factory (factory 1 1000 metal-storage "Ore" 10))
 (def lumber-storage (storage "Lumber" 20 cuckoo-clock-factory))
 (def lumber-mill (source 5 4000 lumber-storage))
@@ -150,7 +150,3 @@
   (.stop ore-mine)
   (.stop lumber-mill))
 
-;;;This could be used to aquire errors from workers
-;;;(agent-error (gears-factory :worker))
-;;;(agent-error (metal-storage :worker))
-(start)
